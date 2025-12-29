@@ -14,6 +14,7 @@ class IntentService:
 
     # 搜索意图模板 - 用于零样本分类
     SEARCH_INTENT_TEMPLATES = [
+        # 原有模板
         "需要查询实时信息",
         "需要搜索最新数据",
         "需要联网获取信息",
@@ -22,7 +23,27 @@ class IntentService:
         "搜索实时新闻",
         "查询天气信息",
         "查询股价价格",
-        "查询最新事件"
+        "查询最新事件",
+        
+        # 新增：天气相关表达
+        "今天会下雨吗",
+        "明天天气怎么样",
+        "会下雨吗",
+        "天气如何",
+        "温度多少",
+        "今天适合出门吗",
+        
+        # 新增：时间相关疑问句
+        "现在几点了",
+        "今天是什么日子",
+        "现在什么时间",
+        
+        # 新增：实时信息查询句式
+        "会...吗",  # 疑问句模式
+        "怎么样",   # 询问状态
+        "如何",     # 询问方式
+        "多少",     # 询问数量
+        "什么",     # 询问内容
     ]
 
     def __init__(self, config=None):
@@ -83,6 +104,19 @@ class IntentService:
                 threshold=self.config.confidence_threshold
             )
 
+            # 混合方法：如果语义置信度在 0.4-0.6 之间，且包含关键词，则提升置信度
+            confidence = result["confidence"]
+            if 0.4 <= confidence < self.config.confidence_threshold:
+                if self._has_time_keywords(question) and self._has_realtime_keywords(question):
+                    # 提升置信度到阈值以上
+                    confidence = max(confidence + 0.15, self.config.confidence_threshold)
+                    result["confidence"] = confidence
+                    result["need_action"] = True
+                    result["reason"] = (
+                        f"{result['reason']} "
+                        f"[混合方法：检测到时间+实时信息关键词，置信度提升至 {confidence:.2f}]"
+                    )
+
             # 提取查询关键词（如果需要搜索）
             query = self._extract_query(question) if result["need_action"] else ""
 
@@ -99,6 +133,34 @@ class IntentService:
             logger.error(f"意图分类失败: {e}", exc_info=True)
             raise RuntimeError(f"意图分类失败: {str(e)}")
 
+    def _has_time_keywords(self, question: str) -> bool:
+        """
+        检查问题是否包含时间关键词
+
+        Args:
+            question: 用户问题
+
+        Returns:
+            是否包含时间关键词
+        """
+        time_keywords = ["今天", "明天", "现在", "当前", "最新", "最近", "实时"]
+        return any(kw in question for kw in time_keywords)
+
+    def _has_realtime_keywords(self, question: str) -> bool:
+        """
+        检查问题是否包含实时信息关键词
+
+        Args:
+            question: 用户问题
+
+        Returns:
+            是否包含实时信息关键词
+        """
+        realtime_keywords = ["天气", "下雨", "温度", "股价", "价格", "新闻", "事件", "怎么样", "如何", "多少", "什么"]
+        # 检查疑问句模式：会...吗
+        question_patterns = ["会" in question and "吗" in question]
+        return any(kw in question for kw in realtime_keywords) or any(question_patterns)
+
     def _enhance_reason(self, question: str, result: Dict[str, Any]) -> str:
         """
         增强分类原因说明
@@ -113,12 +175,9 @@ class IntentService:
         base_reason = result["reason"]
         confidence = result["confidence"]
 
-        # 简单的关键词匹配用于增强说明
-        time_keywords = ["今天", "现在", "当前", "最新", "最近", "实时"]
-        realtime_keywords = ["天气", "股价", "价格", "新闻", "事件", "行情"]
-
-        has_time = any(kw in question for kw in time_keywords)
-        has_realtime = any(kw in question for kw in realtime_keywords)
+        # 使用辅助方法检查关键词
+        has_time = self._has_time_keywords(question)
+        has_realtime = self._has_realtime_keywords(question)
 
         if has_time and has_realtime:
             return (

@@ -24,7 +24,7 @@ class IntentServiceConfig(BaseModel):
 
     # 分类配置
     confidence_threshold: float = float(
-        os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.6")
+        os.getenv("INTENT_CONFIDENCE_THRESHOLD", "0.5")
     )
     max_length: int = int(os.getenv("INTENT_MAX_LENGTH", "512"))
 
